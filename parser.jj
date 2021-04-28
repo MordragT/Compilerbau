@@ -1,0 +1,518 @@
+options {
+	STATIC = false;
+}
+
+PARSER_BEGIN(Parser)
+
+public class Parser {
+    public static Method main = new Method(MethodKind.Procedure, "main");
+
+    public static void main(String[] args) {
+        try {
+            main.addParameter("args");
+            new Parser (System.in).Program();
+            System.out.println("\nMAIN:");
+            main.codeGenerator().printCodes();
+            MethodObject[] finalisedMethods = new MethodObject[main.symbolTable().methodTable().size() + 1];
+            finalisedMethods[0] = main.finalise();
+            int i = 1;
+            for (Method method : main.symbolTable().methodTable().values()) {
+                System.out.println(method.name());
+                method.codeGenerator().printCodes();
+                System.out.println();
+                finalisedMethods[i] = method.finalise();
+                i += 1;
+            }
+            System.out.println("\nAusdruck syntaktisch ok!");
+            JavaClassFileGenerator classFileGenerator = new JavaClassFileGenerator("byteCode", true, false, true);
+            classFileGenerator.generateClassFile(finalisedMethods);
+        } catch (Throwable e) {
+            System.out.println();
+            for (Method method : main.symbolTable().methodTable().values()) {
+                System.out.println(method.name());
+                method.codeGenerator().printCodes();
+                System.out.println();
+            }
+            System.out.println("\nSyntaktisch falsch: " + e.getMessage());
+        }
+    }
+}
+
+PARSER_END(Parser)
+
+SKIP:  { " " | "\t" | "\n" | "\r" }
+// final and int declared so not in ident
+TOKEN: {
+    <NUM: ( "0" | ["1"-"9"] (["0"-"9"])*)> |
+    <FINAL: "final"> |
+    <FUNC: "func"> |
+    <INT: "int"> |
+    <VOID: "void"> |
+    <PRINT: "print"> |
+    <IF: "if"> |
+    <WHILE: "while"> |
+    <ELSE: "else"> |
+    <RETURN: "return"> |
+    <COMPOP: "<" | ">" | "!=" | "==" | "<=" | ">="> |
+    <IDENT: ["a"-"z"] (["a"-"z","A"-"Z","0"-"9"])*>
+}
+
+// void stmt(): pro Variable eine Methode
+// {} lokale Variablen
+// { rechte Regelseiten
+//      <Ident> "=" exp() ";" Token in < >
+// }
+
+
+void Program() throws UnknownSymbolException, OutOfBoundException, SymbolAlreadyDefinedException, LWertException, WrongParametersException, RWertException:
+{}
+{
+	ConstDecl(this.main)
+    {
+        System.out.println("Main: Const declaration succesfull");
+    }
+    VarDecl(this.main)
+    {
+        System.out.println("Main: Variable declaration succesfull");
+        this.main.updateStatic();
+    }
+    (
+        Procedure()
+    )*
+    (
+        Function()
+    )*
+	Statement(this.main)
+    {
+        this.main.codeGenerator().return_();
+        System.out.println("Main: Statement evaluation successful");
+    }
+}
+
+void Procedure() throws SymbolAlreadyDefinedException, UnknownSymbolException, OutOfBoundException, LWertException, WrongParametersException, RWertException:
+{
+    MethodKind kind;
+    Method method;
+}
+{
+    <VOID>
+    {
+        kind = MethodKind.Procedure;
+    }
+    <IDENT>
+    {
+        method = new Method(kind, token.image);
+    }
+    "(" RoutinenParameter(method) ")"
+    {
+        this.main.symbolTable().addMethod(method);
+    }
+    "{"
+    (RoutinenBlock(method))?
+    "}"
+    {
+        method.codeGenerator().return_();
+    }
+}
+
+void Function() throws SymbolAlreadyDefinedException, UnknownSymbolException, OutOfBoundException, LWertException, WrongParametersException, RWertException:
+{
+    MethodKind kind;
+    Method method;
+}
+{
+    <FUNC>
+    {
+        kind = MethodKind.Function;
+    }
+    <IDENT>
+    {
+        method = new Method(kind, token.image);
+    }
+    "(" RoutinenParameter(method) ")"
+    {
+        this.main.symbolTable().addMethod(method);
+    }
+    "{"
+    (RoutinenBlock(method))?
+    <RETURN> Expression(method) ";"
+    "}"
+    {
+        method.codeGenerator().ireturn();
+    }
+}
+
+void RoutinenParameter(Method method) throws SymbolAlreadyDefinedException:
+{}
+{
+    (
+        <INT>
+        <IDENT>
+        {
+            method.addParameter(token.image);
+        }
+        (
+            ","
+            <INT>
+            <IDENT>
+            {
+                method.addParameter(token.image);
+            }
+        )*
+    )?
+}
+
+void RoutinenBlock(Method method) throws SymbolAlreadyDefinedException, UnknownSymbolException, OutOfBoundException, LWertException, WrongParametersException, RWertException:
+{}
+{
+    ConstDecl(method)
+    VarDecl(method)
+    {
+        method.update();
+    }
+    Statement(method)
+}
+
+void ConstDecl(Method method) throws SymbolAlreadyDefinedException:
+{}
+{
+	(
+		<FINAL> <INT>
+		ConstZuw(method)
+		ConstList(method)
+		";"
+	)?
+}
+
+void ConstZuw(Method method) throws SymbolAlreadyDefinedException:
+{
+    String id = "";
+}
+{
+	<IDENT>
+    {
+        id = token.image;
+    }
+	"="
+	<NUM>
+    {
+        method.symbolTable().addConstant(id, token.image);
+    }
+}
+
+void ConstList(Method method) throws SymbolAlreadyDefinedException:
+{}
+{
+	(
+		","
+		ConstZuw(method)
+	)*
+}
+
+void VarDecl(Method method) throws UnknownSymbolException, SymbolAlreadyDefinedException:
+{
+    String id = "";
+}
+{
+    (
+        <INT>
+        <IDENT>
+        {
+            id = token.image;
+            method.symbolTable().addVariable(id);
+        }
+        VarZuw(id, method)
+        VarList(method)
+        ";"
+    )?
+}
+
+void VarZuw(String id, Method method) throws UnknownSymbolException:
+{}
+{
+    (
+        "="
+        <NUM>
+        {
+            Data val = method.symbolTable().getData(id);
+            switch (val.kind()) {
+                case Variable:
+                {
+                    method.symbolTable().setVariable(val.inner(), Integer.parseInt(token.image));
+                }
+                break;
+                default: throw new UnknownSymbolException("Excepted Variable.");
+            }
+        }
+    )?
+}
+
+void VarList(Method method) throws UnknownSymbolException, SymbolAlreadyDefinedException:
+{
+    String id = "";
+}
+{
+    (
+        ","
+        <IDENT>
+        {
+            id = token.image;
+            method.symbolTable().addVariable(id);
+        }
+        VarZuw(id, method)
+    )*
+}
+
+void Expression(Method method) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{}
+{
+    Summe(method)
+}
+
+void Summe(Method method) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{}
+{
+    Produkt(method)
+    (
+        "+" Produkt(method)
+        {
+            method.codeGenerator().add();
+        } |
+        "-" Produkt(method)
+        {
+            method.codeGenerator().sub();
+        }
+    )*
+}
+
+void Produkt(Method method) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{}
+{
+    Term(method)
+    (
+        "*" Term(method)
+        {
+            method.codeGenerator().mul();
+        } |
+        "/" Term(method)
+        {
+            method.codeGenerator().div();
+        }
+    )*
+}
+
+void Term(Method method) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{
+    boolean call = false;
+    String ident;
+}
+{
+    <NUM>
+    {
+        method.codeGenerator().pushNum(Integer.parseInt(token.image));
+    } |
+    <IDENT>
+    {
+        ident = token.image;
+    }
+    (
+        FunctionCall(method, ident)
+        {
+            call = true;
+        }
+    )?
+    {
+        if (!call) {
+            if (method.name() == "main") {
+                method.dereferenceStatic(ident);
+            } else {
+                method.dereference(this.main, ident);
+            }
+        }
+    } |
+    "("
+    Expression(method)
+    ")"
+}
+
+void Condition(Method method) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{
+    String operator;
+}
+{
+    Expression(method)
+    <COMPOP>
+    {
+        operator = token.image;
+    }
+    Expression(method)
+    {
+        switch (operator)
+        {
+            case "<":
+                method.codeGenerator().lessThan();
+                break;
+            case ">":
+                method.codeGenerator().greaterThan();
+                break;
+            case "<=":
+                method.codeGenerator().lessEqual();
+                break;
+            case ">=":
+                method.codeGenerator().greaterEqual();
+                break;
+            case "==":
+                method.codeGenerator().equal();
+                break;
+            case "!=":
+                method.codeGenerator().unequal();
+                break;
+        }
+    }
+}
+
+void FunctionCall(Method method, String ident) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{
+    int count = 0;
+}
+{
+    "("
+     (
+         Expression(method)
+         {
+             count += 1;
+         }
+         (
+             ","
+             Expression(method)
+             {
+                 count += 1;
+             }
+         )*
+     )?
+    ")"
+    {
+        method.callFunc(this.main, ident, count);
+    }
+}
+
+void ProcCall(Method method, String ident) throws UnknownSymbolException, OutOfBoundException, WrongParametersException, RWertException:
+{
+    int count = 0;
+}
+{
+    "("
+     (
+         Expression(method)
+         {
+             count += 1;
+         }
+         (
+             ","
+             Expression(method)
+             {
+                 count += 1;
+             }
+         )*
+     )?
+    ")"
+    {
+        method.call(this.main, ident, count);
+    }
+}
+
+void Statement(Method method) throws UnknownSymbolException, OutOfBoundException, LWertException, WrongParametersException, RWertException:
+{
+    int ifStrIndex;
+    int ifOffset;
+    int whileStrIndex;
+    int whileOffset;
+    String id;
+}
+{
+    (
+        <IDENT>
+        {
+            id = token.image;
+        }
+        (
+            (
+                "="
+                Expression(method)
+                ";"
+                {
+                    if (method.name() == "main") {
+                        method.assignmentStatic(id);
+                    } else {
+                        method.assignment(this.main, id);
+                    }
+                }
+            ) |
+            ProcCall(method, id) ";"
+        )
+
+    ) |
+    <PRINT> "(" Expression(method) ")" ";"
+    {
+        method.codeGenerator().print();
+    }|
+    ("{" StmtList(method) "}") |
+    (
+        <IF>
+        Condition(method)
+        {
+            ifStrIndex = method.codeGenerator().if_();
+            ifOffset = method.codeGenerator().offset();
+        }
+        Statement(method)
+        OptElse(method, ifStrIndex, ifOffset)
+    ) |
+    (
+        <WHILE>
+        {
+            whileOffset = method.codeGenerator().offset();
+        }
+        Condition(method)
+        {
+            whileStrIndex = method.codeGenerator().while_();
+        }
+        Statement(method)
+        {
+            method.codeGenerator().afterWhile(whileStrIndex, whileOffset);
+        }
+    )
+}
+
+void OptElse(Method method, int ifStrIndex, int ifOffset) throws UnknownSymbolException, OutOfBoundException, LWertException, WrongParametersException, RWertException:
+{
+    int elseStrIndex;
+    int elseOffset;
+    boolean elseExpr = false;
+}
+{
+    (
+        {
+            elseStrIndex = method.codeGenerator().else_(ifStrIndex, ifOffset);
+            elseOffset = method.codeGenerator().offset();
+            elseExpr = true;
+        }
+        <ELSE>
+        Statement(method)
+        {
+            method.codeGenerator().afterElse(elseStrIndex, elseOffset);
+        }
+    )?
+    {
+        if (elseExpr == false) {
+            method.codeGenerator().noElse(ifStrIndex, ifOffset);
+        }
+    }
+}
+
+void StmtList(Method method) throws UnknownSymbolException, OutOfBoundException, LWertException, WrongParametersException, RWertException:
+{}
+{
+    (
+        Statement(method)
+    )*
+}

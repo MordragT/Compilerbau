@@ -1,0 +1,10 @@
+void a() {
+    int a = 0;
+    {}
+}
+func b(int eingabe) {
+    int result;
+    result = eingabe;
+    return result;
+}
+print(b(a()))

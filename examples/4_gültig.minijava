@@ -1,0 +1,16 @@
+final int eingabe = 6;
+func fibInner(int n, int a, int b) {
+    int result = 0;
+    if n == 0 {
+        result = a;
+    } else if n == 1 {
+        result = b;
+    } else {
+        result = fibInner(n - 1, b, a + b);
+    }
+    return result;
+}
+func fib(int n) {
+    return fibInner(n, 0, 1);
+}
+print(fib(eingabe));

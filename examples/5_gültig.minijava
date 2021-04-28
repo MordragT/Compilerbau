@@ -1,0 +1,17 @@
+void calc(int n) {
+    int result = 0;
+    {
+        result = n + 10;
+        print(result);
+    }
+}
+func mul3(int n) {
+    return n * 3;
+}
+func mul3x3(int n) {
+    return mul3(n) * mul3(n);
+}
+{
+    print(mul3x3(10));
+    calc(10);
+}

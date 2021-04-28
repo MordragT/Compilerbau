@@ -1,0 +1,10 @@
+final int wOCHENTAGE = 7;
+int heute = 89, woche;
+func calcWoche(int heute, int wOCHENTAGE){
+    int woche = 0;
+    woche = (heute / wOCHENTAGE) + 1;
+    return woche;
+}
+{
+    print(calcWoche(heute, wOCHENTAGE));
+}

@@ -1,0 +1,9 @@
+final int wOCHENTAGE = 7;
+int heute = 89, woche;
+void calcWoche(){
+    woche = (heute / wOCHENTAGE) + 1;
+}
+{
+    calcWoche();
+    print(woche);
+}
